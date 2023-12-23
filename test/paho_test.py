@@ -39,7 +39,9 @@ def create_server_socket_ssl(*args, **kwargs):
         raise RuntimeError
 
     ssl_version = ssl.PROTOCOL_TLSv1
-    if hasattr(ssl, "PROTOCOL_TLS"):
+    if hasattr(ssl, "PROTOCOL_TLS_SERVER"):
+        ssl_version = ssl.PROTOCOL_TLS_SERVER
+    elif hasattr(ssl, "PROTOCOL_TLS"):
         ssl_version = ssl.PROTOCOL_TLS
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -501,7 +503,7 @@ def gen_connack(flags=0, rc=0, proto_ver=4, properties=b"", property_helper=True
 
         packet = struct.pack('!BBBB', 32, 2+len(properties), flags, rc) + properties
     else:
-        packet = struct.pack('!BBBB', 32, 2, flags, rc);
+        packet = struct.pack('!BBBB', 32, 2, flags, rc)
 
     return packet
 

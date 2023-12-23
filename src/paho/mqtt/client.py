@@ -18,7 +18,6 @@ import hashlib
 import logging
 import string
 import struct
-import sys
 import threading
 import time
 import uuid
@@ -350,10 +349,10 @@ class MQTTMessageInfo(object):
         elif self.rc > 0:
             raise RuntimeError('Message publish failed: %s' % (error_string(self.rc)))
 
-        timeout_time = None if timeout is None else time.time() + timeout
+        timeout_time = None if timeout is None else time_func() + timeout
         timeout_tenth = None if timeout is None else timeout / 10.
         def timed_out():
-            return False if timeout is None else time.time() > timeout_time
+            return False if timeout is None else time_func() > timeout_time
 
         with self._condition:
             while not self._published and not timed_out():
@@ -771,7 +770,10 @@ class Client(object):
         if tls_version is None:
             tls_version = ssl.PROTOCOL_TLSv1_2
             # If the python version supports it, use highest TLS version automatically
-            if hasattr(ssl, "PROTOCOL_TLS"):
+            if hasattr(ssl, "PROTOCOL_TLS_CLIENT"):
+                # This also enables CERT_REQUIRED and check_hostname by default.
+                tls_version = ssl.PROTOCOL_TLS_CLIENT
+            elif hasattr(ssl, "PROTOCOL_TLS"):
                 tls_version = ssl.PROTOCOL_TLS
         context = ssl.SSLContext(tls_version)
 
@@ -868,7 +870,8 @@ class Client(object):
 
     def connect(self, host, port=1883, keepalive=60, bind_address="", bind_port=0,
                 clean_start=MQTT_CLEAN_START_FIRST_ONLY, properties=None):
-        """Connect to a remote broker.
+        """Connect to a remote broker. This is a blocking call that establishes
+        the underlying connection and transmits a CONNECT packet.
 
         host is the hostname or IP address of the remote broker.
         port is the network port of the server host to connect to. Defaults to
@@ -3550,7 +3553,6 @@ class Client(object):
         return MQTT_ERR_SUCCESS
 
     def _handle_on_message(self, message):
-        matched = False
 
         try:
             topic = message.topic
