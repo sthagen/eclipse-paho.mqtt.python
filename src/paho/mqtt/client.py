@@ -479,7 +479,8 @@ class Client(object):
     """
 
     def __init__(self, client_id="", clean_session=None, userdata=None,
-                 protocol=MQTTv311, transport="tcp", reconnect_on_failure=True):
+                 protocol=MQTTv311, transport="tcp", reconnect_on_failure=True,
+                 manual_ack=False ):
         """client_id is the unique client id string used when connecting to the
         broker. If client_id is zero length or None, then the behaviour is
         defined by which protocol version is in use. If using MQTT v3.1.1, then
@@ -511,11 +512,20 @@ class Client(object):
 
         Set transport to "websockets" to use WebSockets as the transport
         mechanism. Set to "tcp" to use raw TCP, which is the default.
+
+        Normally, when a message is received, the library automatically
+        acknowledges after on_message callback returns.  manual_ack=True allows the application to
+        acknowledge receipt after it has completed processing of a message
+        using a the ack() method. This addresses vulnerabilty to message loss
+        if applications fails while processing a message, or while it pending
+        locally.
+
         """
 
         if transport.lower() not in ('websockets', 'tcp'):
             raise ValueError(
                 'transport must be "websockets" or "tcp", not %s' % transport)
+        self._manual_ack = manual_ack
         self._transport = transport.lower()
         self._protocol = protocol
         self._userdata = userdata
@@ -632,6 +642,10 @@ class Client(object):
         except ssl.SSLWantWriteError:
             self._call_socket_register_write()
             raise BlockingIOError
+        except AttributeError as err:
+            self._easy_log(
+                MQTT_LOG_DEBUG, "socket was None: %s", err)
+            raise ConnectionError
 
     def _sock_send(self, buf):
         try:
@@ -778,6 +792,9 @@ class Client(object):
         context = ssl.SSLContext(tls_version)
 
         # Configure context
+        if ciphers is not None:
+            context.set_ciphers(ciphers)
+
         if certfile is not None:
             context.load_cert_chain(certfile, keyfile, keyfile_password)
 
@@ -790,9 +807,6 @@ class Client(object):
             context.load_verify_locations(ca_certs)
         else:
             context.load_default_certs()
-
-        if ciphers is not None:
-            context.set_ciphers(ciphers)
 
         self.tls_set_context(context)
 
@@ -1645,6 +1659,10 @@ class Client(object):
     def user_data_set(self, userdata):
         """Set the user data variable passed to callbacks. May be any data type."""
         self._userdata = userdata
+        
+    def user_data_get(self):
+        """Get the user data variable passed to callbacks. May be any data type."""
+        return self._userdata
 
     def will_set(self, topic, payload=None, qos=0, retain=False, properties=None):
         """Set a Will to be sent by the broker in case the client disconnects unexpectedly.
@@ -3351,15 +3369,43 @@ class Client(object):
             return MQTT_ERR_SUCCESS
         elif message.qos == 1:
             self._handle_on_message(message)
-            return self._send_puback(message.mid)
+            if self._manual_ack:
+                return MQTT_ERR_SUCCESS
+            else:
+                return self._send_puback(message.mid)
         elif message.qos == 2:
+
             rc = self._send_pubrec(message.mid)
+
             message.state = mqtt_ms_wait_for_pubrel
             with self._in_message_mutex:
                 self._in_messages[message.mid] = message
+
             return rc
         else:
             return MQTT_ERR_PROTOCOL
+
+    def ack(self, mid: int, qos: int) -> int:
+        """
+           send an acknowledgement for a given message id. (stored in message.mid )
+           only useful in QoS=1 and auto_ack=False
+        """
+        if self._manual_ack :
+            if qos == 1:
+                return self._send_puback(mid)
+            elif qos == 2:
+                return self._send_pubcomp(mid)
+
+        return MQTT_ERR_SUCCESS
+
+    def manual_ack_set(self, on):
+        """
+           The paho library normally acknowledges messages as soon as they are delivered to the caller.
+           If manual_ack is turned on, then the caller MUST manually acknowledge every message once 
+           application processing is complete.
+        """
+        self._manual_ack = on
+
 
     def _handle_pubrel(self):
         if self._protocol == MQTTv5:
@@ -3390,7 +3436,10 @@ class Client(object):
         # is possible that we must known about this message.
         # Choose to acknwoledge this messsage (and thus losing a message) but
         # avoid hanging. See #284.
-        return self._send_pubcomp(mid)
+        if self._manual_ack:
+            return MQTT_ERR_SUCCESS
+        else:
+            return self._send_pubcomp(mid)
 
     def _update_inflight(self):
         # Dont lock message_mutex here
