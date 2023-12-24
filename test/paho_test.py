@@ -34,7 +34,7 @@ def create_server_socket():
     return sock
 
 
-def create_server_socket_ssl(*args, **kwargs):
+def create_server_socket_ssl(cert_reqs=None):
     if ssl is None:
         raise RuntimeError
 
@@ -46,10 +46,13 @@ def create_server_socket_ssl(*args, **kwargs):
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    ssock = ssl.wrap_socket(
-        sock, ca_certs="../ssl/all-ca.crt",
-        keyfile="../ssl/server.key", certfile="../ssl/server.crt",
-        server_side=True, ssl_version=ssl_version, **kwargs)
+    context = ssl.SSLContext(ssl_version)
+    context.load_verify_locations("../ssl/all-ca.crt")
+    context.load_cert_chain("../ssl/server.crt", "../ssl/server.key")
+    if cert_reqs:
+        context.verify_mode = cert_reqs
+
+    ssock = context.wrap_socket(sock, server_side=True)
     ssock.settimeout(10)
     ssock.bind(('', 1888))
     ssock.listen(5)
@@ -493,7 +496,7 @@ def gen_connect(client_id, clean_session=True, keepalive=60, username=None, pass
 
 def gen_connack(flags=0, rc=0, proto_ver=4, properties=b"", property_helper=True):
     if proto_ver == 5:
-        if property_helper == True:
+        if property_helper:
             if properties is not None:
                 properties = mqtt5_props.gen_uint16_prop(mqtt5_props.PROP_TOPIC_ALIAS_MAXIMUM, 10) \
                     + properties + mqtt5_props.gen_uint16_prop(mqtt5_props.PROP_RECEIVE_MAXIMUM, 20)
