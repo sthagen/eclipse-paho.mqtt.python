@@ -27,7 +27,7 @@ def bind_to_any_free_port(sock) -> int:
     """
     while True:
         try:
-            sock.bind(('', 0))
+            sock.bind(('localhost', 0))
             return sock.getsockname()[1]
         except OSError:
             pass
@@ -83,6 +83,27 @@ def expect_packet(sock, name, expected):
 
     assert packet_matches(name, packet_recvd, expected)
     return True
+
+def expect_no_packet(sock, delay=1):
+    """ expect that nothing is received within given delay
+    """
+    sock.settimeout(delay)
+    try:
+        previous_timeout = sock.gettimeout()
+        data = sock.recv(1024)
+    except socket.timeout:
+        data = None
+    finally:
+        sock.settimeout(previous_timeout)
+
+    if data is not None:
+        try:
+            print("Received: " + to_string(data))
+        except struct.error:
+            print("Received (not decoded): 0x" +
+                  binascii.b2a_hex(data).decode('utf8'))
+
+    assert data is None, "shouldn't receive any data"
 
 
 def packet_matches(name, recvd, expected):
