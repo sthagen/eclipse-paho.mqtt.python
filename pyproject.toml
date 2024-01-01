@@ -79,6 +79,7 @@ extend-select = [
     "F63",
     "F7",
     "F82",
+    "FLY",  # flynt
     "I",
     "S", # Bandit
     "UP",
@@ -105,4 +106,14 @@ line-length = 167
     "S101",
     "S105",
     "S106",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "@(abc\\.)?abstractmethod",
+    "def __repr__",
+    "except ImportError:",
+    "if TYPE_CHECKING:",
+    "raise AssertionError",
+    "raise NotImplementedError",
 ]
