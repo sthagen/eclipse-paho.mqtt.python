@@ -866,6 +866,7 @@ class Client:
         tls_version: int | None = None,
         ciphers: str | None = None,
         keyfile_password: str | None = None,
+        alpn_protocols: list[str] | None = None,
     ) -> None:
         """Configure network encryption and authentication options. Enables SSL/TLS support.
 
@@ -944,6 +945,11 @@ class Client:
             context.load_verify_locations(ca_certs)
         else:
             context.load_default_certs()
+
+        if alpn_protocols is not None:
+            if not getattr(ssl, "HAS_ALPN", None):
+                raise ValueError("SSL library has no support for ALPN")
+            context.set_alpn_protocols(alpn_protocols)
 
         self.tls_set_context(context)
 
@@ -1985,7 +1991,7 @@ class Client:
             log_callback(client, userdata, level, buf)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         level:      gives the severity of the message and will be one of
                     MQTT_LOG_INFO, MQTT_LOG_NOTICE, MQTT_LOG_WARNING,
                     MQTT_LOG_ERR, and MQTT_LOG_DEBUG.
@@ -2016,7 +2022,7 @@ class Client:
             connect_callback(client, userdata)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
 
         Decorator: @client.pre_connect_callback() (```client``` is the name of the
             instance which this callback is being attached to)
@@ -2050,7 +2056,7 @@ class Client:
             connect_callback(client, userdata, flags, reasonCode, properties)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         flags:      response flags sent by the broker
         rc:         the connection result
         reasonCode: the MQTT v5.0 reason code: an instance of the ReasonCode class.
@@ -2105,7 +2111,7 @@ class Client:
             on_connect_fail(client, userdata)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
 
         Decorator: @client.connect_fail_callback() (```client``` is the name of the
             instance which this callback is being attached to)
@@ -2139,7 +2145,7 @@ class Client:
             subscribe_callback(client, userdata, mid, reasonCodes, properties)
 
         client:         the client instance for this callback
-        userdata:       the private user data as set in Client() or userdata_set()
+        userdata:       the private user data as set in Client() or user_data_set()
         mid:            matches the mid variable returned from the corresponding
                         subscribe() call.
         granted_qos:    list of integers that give the QoS level the broker has
@@ -2181,7 +2187,7 @@ class Client:
             on_message_callback(client, userdata, message)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         message:    an instance of MQTTMessage.
                     This is a class with members topic, payload, qos, retain.
 
@@ -2220,7 +2226,7 @@ class Client:
             on_publish_callback(client, userdata, mid)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         mid:        matches the mid variable returned from the corresponding
                     publish() call, to allow outgoing messages to be tracked.
 
@@ -2256,7 +2262,7 @@ class Client:
             unsubscribe_callback(client, userdata, mid, properties, reasonCodes)
 
         client:         the client instance for this callback
-        userdata:       the private user data as set in Client() or userdata_set()
+        userdata:       the private user data as set in Client() or user_data_set()
         mid:            matches the mid variable returned from the corresponding
                         unsubscribe() call.
         properties:     the MQTT v5.0 properties received from the broker.  A
@@ -2295,7 +2301,7 @@ class Client:
             disconnect_callback(client, userdata, reasonCode, properties)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         rc:         the disconnection result
                     The rc parameter indicates the disconnection state. If
                     MQTT_ERR_SUCCESS (0), the callback was called in response to
@@ -2332,7 +2338,7 @@ class Client:
             socket_open_callback(client, userdata, socket)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         sock:       the socket which was just opened.
 
         Decorator: @client.socket_open_callback() (```client``` is the name of the
@@ -2379,7 +2385,7 @@ class Client:
             socket_close_callback(client, userdata, socket)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         sock:       the socket which is about to be closed.
 
         Decorator: @client.socket_close_callback() (```client``` is the name of the
@@ -2426,7 +2432,7 @@ class Client:
             socket_register_write_callback(client, userdata, socket)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         sock:       the socket which should be registered for writing
 
         Decorator: @client.socket_register_write_callback() (```client``` is the name of the
@@ -2480,7 +2486,7 @@ class Client:
             socket_unregister_write_callback(client, userdata, socket)
 
         client:     the client instance for this callback
-        userdata:   the private user data as set in Client() or userdata_set()
+        userdata:   the private user data as set in Client() or user_data_set()
         sock:       the socket which should be unregistered for writing
 
         Decorator: @client.socket_unregister_write_callback() (```client``` is the name of the
