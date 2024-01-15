@@ -44,8 +44,15 @@ proxy = [
 [project.urls]
 Homepage = "http://eclipse.org/paho"
 
-[tool.hatch.version]
-path = "src/paho/mqtt/__init__.py"
+[tool.coverage.report]
+exclude_also = [
+    "@(abc\\.)?abstractmethod",
+    "def __repr__",
+    "except ImportError:",
+    "if TYPE_CHECKING:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -67,6 +74,10 @@ include = [
     "src/paho",
 ]
 
+[tool.hatch.version]
+path = "src/paho/mqtt/__init__.py"
+
+
 [tool.mypy]
 
 [[tool.mypy.overrides]]
@@ -84,14 +95,19 @@ testpaths = "tests src"
 exclude = ["test/lib/python/*"]
 extend-select = [
     "B",
+    "C4",
+    "E",
     "E9",
     "F63",
     "F7",
     "F82",
     "FLY",  # flynt
     "I",
+    "ISC",
+    "PERF",
     "S", # Bandit
     "UP",
+    "RUF",
     "W",
 ]
 ignore = []
@@ -107,24 +123,16 @@ line-length = 167
     "F811",
     "F841",
     "I",
+    "PERF",
     "S",
     "UP",
 ]
 "tests/**/*.py" = [
     "F811",
+    "PERF203",
     "S101",
     "S105",
     "S106",
-]
-
-[tool.coverage.report]
-exclude_also = [
-    "@(abc\\.)?abstractmethod",
-    "def __repr__",
-    "except ImportError:",
-    "if TYPE_CHECKING:",
-    "raise AssertionError",
-    "raise NotImplementedError",
 ]
 
 [tool.typos.default.extend-words]
