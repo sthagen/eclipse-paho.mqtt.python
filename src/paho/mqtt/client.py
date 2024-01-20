@@ -239,7 +239,7 @@ CallbackOnUnsubscribe = Union[
 _socket = socket
 
 
-class WebsocketConnectionError(ValueError):
+class WebsocketConnectionError(ConnectionError):
     pass
 
 
@@ -455,6 +455,9 @@ class MQTTMessageInfo:
         with self._condition:
             while not self._published and not timed_out():
                 self._condition.wait(timeout_tenth)
+
+        if self.rc > 0:
+            raise RuntimeError(f'Message publish failed: {error_string(self.rc)}')
 
     def is_published(self) -> bool:
         """Returns True if the message associated with this object has been
@@ -1193,16 +1196,23 @@ class Client:
             "pos": 0,
         }
 
-        self._out_packet = collections.deque()
-
-        with self._msgtime_mutex:
-            self._last_msg_in = time_func()
-            self._last_msg_out = time_func()
-
         self._ping_t = 0.0
         self._state = mqtt_cs_new
 
         self._sock_close()
+
+        # Mark all currently outgoing QoS = 0 packets as lost,
+        # or `wait_for_publish()` could hang forever
+        for pkt in self._out_packet:
+            if pkt["command"] & 0xF0 == PUBLISH and pkt["qos"] == 0 and pkt["info"] is not None:
+                pkt["info"].rc = MQTT_ERR_CONN_LOST
+                pkt["info"]._set_as_published()
+
+        self._out_packet.clear()
+
+        with self._msgtime_mutex:
+            self._last_msg_in = time_func()
+            self._last_msg_out = time_func()
 
         # Put messages in progress in a valid state.
         self._messages_reconnect_reset()
@@ -1263,11 +1273,9 @@ class Client:
         if timeout < 0.0:
             raise ValueError('Invalid timeout.')
 
-        try:
-            packet = self._out_packet.popleft()
-            self._out_packet.appendleft(packet)
+        if self.want_write():
             wlist = [self._sock]
-        except IndexError:
+        else:
             wlist = []
 
         # used to check if there are any bytes left in the (SSL) socket
@@ -1290,10 +1298,19 @@ class Client:
             socklist = select.select(rlist, wlist, [], timeout)
         except TypeError:
             # Socket isn't correct type, in likelihood connection is lost
+            # ... or we called disconnect(). In that case the socket will
+            # be closed but some loop (like loop_forever) will continue to
+            # call _loop(). We still want to break that loop by returning an
+            # rc != MQTT_ERR_SUCCESS and we don't want state to change from
+            # mqtt_cs_disconnecting.
+            if self._state != ConnectionState.MQTT_CS_DISCONNECTING:
+                self._state = ConnectionState.MQTT_CS_CONNECTION_LOST
             return MQTTErrorCode.MQTT_ERR_CONN_LOST
         except ValueError:
             # Can occur if we just reconnected but rlist/wlist contain a -1 for
             # some reason.
+            if self._state != ConnectionState.MQTT_CS_DISCONNECTING:
+                self._state = ConnectionState.MQTT_CS_CONNECTION_LOST
             return MQTTErrorCode.MQTT_ERR_CONN_LOST
         except Exception:
             # Note that KeyboardInterrupt, etc. can still terminate since they
@@ -1742,12 +1759,7 @@ class Client:
         """Call to determine if there is network data waiting to be written.
         Useful if you are calling select() yourself rather than using loop().
         """
-        try:
-            packet = self._out_packet.popleft()
-            self._out_packet.appendleft(packet)
-            return True
-        except IndexError:
-            return False
+        return len(self._out_packet) > 0
 
     def loop_misc(self) -> MQTTErrorCode:
         """Process miscellaneous network events. Use in place of calling loop() if you
@@ -1768,6 +1780,7 @@ class Client:
             if self._state == mqtt_cs_disconnecting:
                 rc = MQTTErrorCode.MQTT_ERR_SUCCESS
             else:
+                self._state = ConnectionState.MQTT_CS_CONNECTION_LOST
                 rc = MQTTErrorCode.MQTT_ERR_KEEPALIVE
 
             self._do_on_disconnect(rc)
@@ -1896,7 +1909,7 @@ class Client:
             if self._state == mqtt_cs_connect_async:
                 try:
                     self.reconnect()
-                except (OSError, WebsocketConnectionError):
+                except OSError:
                     self._handle_on_connect_fail()
                     if not retry_first_connection:
                         raise
@@ -1937,7 +1950,7 @@ class Client:
                 else:
                     try:
                         self.reconnect()
-                    except (OSError, WebsocketConnectionError):
+                    except OSError:
                         self._handle_on_connect_fail()
                         self._easy_log(
                             MQTT_LOG_DEBUG, "Connection failed, retrying")
@@ -2580,6 +2593,9 @@ class Client:
 
             self._do_on_disconnect(rc, properties)
 
+        if rc == MQTT_ERR_CONN_LOST:
+            self._state = ConnectionState.MQTT_CS_CONNECTION_LOST
+
         return rc
 
     def _packet_read(self) -> MQTTErrorCode:
@@ -2601,13 +2617,13 @@ class Client:
                 command = self._sock_recv(1)
             except BlockingIOError:
                 return MQTTErrorCode.MQTT_ERR_AGAIN
-            except ConnectionError as err:
-                self._easy_log(
-                    MQTT_LOG_ERR, 'failed to receive on socket: %s', err)
-                return MQTTErrorCode.MQTT_ERR_CONN_LOST
             except TimeoutError as err:
                 self._easy_log(
                     MQTT_LOG_ERR, 'timeout on socket: %s', err)
+                return MQTTErrorCode.MQTT_ERR_CONN_LOST
+            except OSError as err:
+                self._easy_log(
+                    MQTT_LOG_ERR, 'failed to receive on socket: %s', err)
                 return MQTTErrorCode.MQTT_ERR_CONN_LOST
             else:
                 if len(command) == 0:
@@ -2623,7 +2639,7 @@ class Client:
                     byte = self._sock_recv(1)
                 except BlockingIOError:
                     return MQTTErrorCode.MQTT_ERR_AGAIN
-                except ConnectionError as err:
+                except OSError as err:
                     self._easy_log(
                         MQTT_LOG_ERR, 'failed to receive on socket: %s', err)
                     return MQTTErrorCode.MQTT_ERR_CONN_LOST
@@ -2653,7 +2669,7 @@ class Client:
                 data = self._sock_recv(self._in_packet['to_process'])
             except BlockingIOError:
                 return MQTTErrorCode.MQTT_ERR_AGAIN
-            except ConnectionError as err:
+            except OSError as err:
                 self._easy_log(
                     MQTT_LOG_ERR, 'failed to receive on socket: %s', err)
                 return MQTTErrorCode.MQTT_ERR_CONN_LOST
@@ -2704,7 +2720,7 @@ class Client:
             except BlockingIOError:
                 self._out_packet.appendleft(packet)
                 return MQTTErrorCode.MQTT_ERR_AGAIN
-            except ConnectionError as err:
+            except OSError as err:
                 self._out_packet.appendleft(packet)
                 self._easy_log(
                     MQTT_LOG_ERR, 'failed to receive on socket: %s', err)
