@@ -1,12 +1,25 @@
 v2.0.0 - 2023-xx-xx
 ===================
 
+- **BREAKING** Added callback_api_version. This break *ALL* users of paho-mqtt Client class.
+  See migrations.md for details on how to upgrade.
+  tl; dr; add CallbackAPIVersion.VERSION1 to first argument of Client()
 - **BREAKING** Drop support for Python 2.7, Python 3.5 and Python 3.6
   Minimum tested version is Python 3.7
   Python version up to Python 3.12 are tested.
 - **BREAKING** connect_srv changed it signature to take an additional bind_port parameter.
   This is a breaking change, but in previous version connect_srv was broken anyway.
   Closes #493.
+- **BREAKING** Remove some deprecated argument and method:
+  * `max_packets` argument in loop(), loop_write() and loop_forever() is removed
+  * `force` argument in loop_stop() is removed
+  * method `message_retry_set()` is removed
+- Possible breaking change: Add properties to access most Client attribute. Closes #764.
+  Since this add new properties like `logger`, if a sub-class defined `logger`, the two `logger`
+  will conflict.
+- Add version 2 of user-callback which allow to access MQTTv5 reason code & properties that were
+  missing from on_publish callback. Also it's more consistent in parameter order or between
+  MQTTv3 and MQTTv5.
 - Add types to Client class, which caused few change which should be compatible.
   Known risk of breaking changes:
   - Use enum for returned error code (like MQTT_ERR_SUCCESS). It use an IntEnum
@@ -29,6 +42,11 @@ v2.0.0 - 2023-xx-xx
   or publish during connection. Closes #549.
 - Correctly mark connection as broken on SSL error and don't crash loop_forever.
   Closes #750.
+- Fix handling of MQTT v5.0 PUBREL messages with remaining length not equal to
+  2. Closes #696.
+- Raise error on `subscribe()` when `topic` is an empty list. Closes #690.
+- Raise error on `publish.multiple()` when `msgs` is an empty list. Closes #684.
+- Don't add port to Host: header for websockets connections when the port if the default port. Closes #666.
 
 
 v1.6.1 - 2021-10-21

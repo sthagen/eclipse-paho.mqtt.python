@@ -28,6 +28,11 @@ class MQTTProtocolVersion(enum.IntEnum):
     MQTTv5 = 5
 
 
+class CallbackAPIVersion(enum.Enum):
+    VERSION1 = 1
+    VERSION2 = 2
+
+
 class MessageType(enum.IntEnum):
     CONNECT = 0x10
     CONNACK = 0x20
@@ -63,12 +68,14 @@ class ConnackCode(enum.IntEnum):
     CONNACK_REFUSED_NOT_AUTHORIZED = 5
 
 
-class ConnectionState(enum.IntEnum):
-    MQTT_CS_NEW = 0
-    MQTT_CS_CONNECTED = 1
-    MQTT_CS_DISCONNECTING = 2
-    MQTT_CS_CONNECT_ASYNC = 3
-    MQTT_CS_CONNECTION_LOST = 4
+class ConnectionState(enum.Enum):
+    MQTT_CS_NEW = enum.auto()
+    MQTT_CS_CONNECT_ASYNC = enum.auto()
+    MQTT_CS_CONNECTING = enum.auto()
+    MQTT_CS_CONNECTED = enum.auto()
+    MQTT_CS_CONNECTION_LOST = enum.auto()
+    MQTT_CS_DISCONNECTING = enum.auto()
+    MQTT_CS_DISCONNECTED = enum.auto()
 
 
 class MessageState(enum.IntEnum):
