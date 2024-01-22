@@ -11,6 +11,7 @@ The MQTT protocol is a machine-to-machine (M2M)/"Internet of Things" connectivit
 
 Paho is an `Eclipse Foundation <https://www.eclipse.org/org/foundation/>`_ project.
 
+Warning: the README currently cover version 1.x of the library. For the 2.0 (currently in release candidate) look at PR #804 which will be merged before final release of 2.0.
 
 Contents
 --------
@@ -1276,7 +1277,7 @@ tls
 
 protocol
     choose the version of the MQTT protocol to use. Use either ``MQTTv31``,
-    ``MQTTv311``, or ``MQTTv5`.
+    ``MQTTv311``, or ``MQTTv5``.
 
 transport
     set to "websockets" to send MQTT over WebSockets. Leave at the default of
