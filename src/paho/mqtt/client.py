@@ -288,7 +288,7 @@ class WebsocketConnectionError(ConnectionError):
     pass
 
 
-def error_string(mqtt_errno: MQTTErrorCode) -> str:
+def error_string(mqtt_errno: MQTTErrorCode | int) -> str:
     """Return the error string associated with an mqtt error number."""
     if mqtt_errno == MQTT_ERR_SUCCESS:
         return "No error."
@@ -729,10 +729,10 @@ class Client:
     def __init__(
         self,
         callback_api_version: CallbackAPIVersion,
-        client_id: str = "",
+        client_id: str | None = "",
         clean_session: bool | None = None,
         userdata: Any = None,
-        protocol: int = MQTTv311,
+        protocol: MQTTProtocolVersion = MQTTv311,
         transport: Literal["tcp", "websockets"] = "tcp",
         reconnect_on_failure: bool = True,
         manual_ack: bool = False,
@@ -953,7 +953,7 @@ class Client:
 
         This property is read-only.
         """
-        return self.protocol
+        return self._protocol
 
     @property
     def connect_timeout(self) -> float:
@@ -2032,7 +2032,7 @@ class Client:
         return self._send_subscribe(False, topic_qos_list, properties)
 
     def unsubscribe(
-        self, topic: str, properties: Properties | None = None
+        self, topic: str | list[str], properties: Properties | None = None
     ) -> tuple[MQTTErrorCode, int | None]:
         """Unsubscribe the client from one or more topics.
 
@@ -3462,7 +3462,7 @@ class Client:
         return self._packet_queue(command, packet, 0, 0)
 
     def _send_connect(self, keepalive: int) -> MQTTErrorCode:
-        proto_ver = self._protocol
+        proto_ver = int(self._protocol)
         # hard-coded UTF-8 encoded string
         protocol = b"MQTT" if proto_ver >= MQTTv311 else b"MQIsdp"
 
