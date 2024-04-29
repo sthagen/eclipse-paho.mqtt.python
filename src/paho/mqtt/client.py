@@ -465,7 +465,7 @@ def _force_bytes(s: str | bytes) -> bytes:
     return s
 
 
-def _encode_payload(payload: str | bytes | bytearray | int | float | None) -> bytes:
+def _encode_payload(payload: str | bytes | bytearray | int | float | None) -> bytes|bytearray:
     if isinstance(payload, str):
         return payload.encode("utf-8")
 
@@ -648,7 +648,7 @@ class Client:
 
     :param CallbackAPIVersion callback_api_version: define the API version for user-callback (on_connect, on_publish,...).
         This field is required and it's recommended to use the latest version (CallbackAPIVersion.API_VERSION2).
-        See each callback for description of API for each version. The file migrations.md contains details on
+        See each callback for description of API for each version. The file docs/migrations.rst contains details on
         how to migrate between version.
 
     :param str client_id: the unique client id string used when connecting to the
@@ -682,6 +682,10 @@ class Client:
 
     :param transport: use "websockets" to use WebSockets as the transport
         mechanism. Set to "tcp" to use raw TCP, which is the default.
+        Use "unix" to use Unix sockets as the transport mechanism; note that
+        this option is only available on platforms that support Unix sockets,
+        and the "host" argument is interpreted as the path to the Unix socket
+        file in this case.
 
     :param bool manual_ack: normally, when a message is received, the library automatically
         acknowledges after on_message callback returns.  manual_ack=True allows the application to
@@ -733,14 +737,16 @@ class Client:
         clean_session: bool | None = None,
         userdata: Any = None,
         protocol: MQTTProtocolVersion = MQTTv311,
-        transport: Literal["tcp", "websockets"] = "tcp",
+        transport: Literal["tcp", "websockets", "unix"] = "tcp",
         reconnect_on_failure: bool = True,
         manual_ack: bool = False,
     ) -> None:
         transport = transport.lower()  # type: ignore
-        if transport not in ("websockets", "tcp"):
+        if transport == "unix" and not hasattr(socket, "AF_UNIX"):
+            raise ValueError('"unix" transport not supported')
+        elif transport not in ("websockets", "tcp", "unix"):
             raise ValueError(
-                f'transport must be "websockets" or "tcp", not {transport}')
+                f'transport must be "websockets", "tcp" or "unix", not {transport}')
 
         self._manual_ack = manual_ack
         self._transport = transport
@@ -764,7 +770,7 @@ class Client:
             # Help user to migrate, it probably provided a client id
             # as first arguments
             raise ValueError(
-                "Unsupported callback API version: version 2.0 added a callback_api_version, see migrations.md for details"
+                "Unsupported callback API version: version 2.0 added a callback_api_version, see docs/migrations.rst for details"
             )
         if self._callback_api_version not in CallbackAPIVersion:
             raise ValueError("Unsupported callback API version")
@@ -931,7 +937,7 @@ class Client:
         self._keepalive = value
 
     @property
-    def transport(self) -> Literal["tcp", "websockets"]:
+    def transport(self) -> Literal["tcp", "websockets", "unix"]:
         """
         Transport method used for the connection ("tcp" or "websockets").
 
@@ -2444,7 +2450,7 @@ class Client:
 
                 connect_callback(client, userdata, flags, rc)
 
-            * For MQTT it's v5.0::
+            * For MQTT v5.0 it's::
 
                 connect_callback(client, userdata, flags, reason_code, properties)
 
@@ -2731,7 +2737,7 @@ class Client:
 
                 disconnect_callback(client, userdata, rc)
 
-            * For MQTT it's v5.0::
+            * For MQTT v5.0 it's::
 
                 disconnect_callback(client, userdata, reason_code, properties)
 
@@ -3362,7 +3368,7 @@ class Client:
         self,
         mid: int,
         topic: bytes,
-        payload: bytes = b"",
+        payload: bytes|bytearray = b"",
         qos: int = 0,
         retain: bool = False,
         dup: bool = False,
@@ -3372,7 +3378,7 @@ class Client:
         # we assume that topic and payload are already properly encoded
         if not isinstance(topic, bytes):
             raise TypeError('topic must be bytes, not str')
-        if payload and not isinstance(payload, bytes):
+        if payload and not isinstance(payload, (bytes, bytearray)):
             raise TypeError('payload must be bytes if set')
 
         if self._sock is None:
@@ -4597,7 +4603,11 @@ class Client:
         return None
 
     def _create_socket(self) -> SocketLike:
-        sock = self._create_socket_connection()
+        if self._transport == "unix":
+            sock = self._create_unix_socket_connection()
+        else:
+            sock = self._create_socket_connection()
+
         if self._ssl:
             sock = self._ssl_wrap_socket(sock)
 
@@ -4613,6 +4623,11 @@ class Client:
             )
 
         return sock
+
+    def _create_unix_socket_connection(self) -> _socket.socket:
+        unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        unix_socket.connect(self._host)
+        return unix_socket
 
     def _create_socket_connection(self) -> _socket.socket:
         proxy = self._get_proxy()
