@@ -1234,7 +1234,7 @@ class Client:
             is mandatory.
         :param str certfile: PEM encoded client certificate filename. Used with
             keyfile for client TLS based authentication. Support for this feature is
-            broker dependent. Note that if the files in encrypted and needs a password to
+            broker dependent. Note that if the file is encrypted and needs a password to
             decrypt it, then this can be passed using the keyfile_password argument - you
             should take precautions to ensure that your password is
             not hard coded into your program by loading the password from a file
@@ -1242,7 +1242,7 @@ class Client:
             be requested to be typed in at a terminal window.
         :param str keyfile: PEM encoded client private keys filename. Used with
             certfile for client TLS based authentication. Support for this feature is
-            broker dependent. Note that if the files in encrypted and needs a password to
+            broker dependent. Note that if the file is encrypted and needs a password to
             decrypt it, then this can be passed using the keyfile_password argument - you
             should take precautions to ensure that your password is
             not hard coded into your program by loading the password from a file
@@ -3351,6 +3351,8 @@ class Client:
         self, packet: bytearray, remaining_length: int
     ) -> bytearray:
         remaining_bytes = []
+        if remaining_length > 268_435_455:
+            raise ValueError("Packet too large")
         while True:
             byte = remaining_length % 128
             remaining_length = remaining_length // 128
@@ -3361,7 +3363,6 @@ class Client:
             remaining_bytes.append(byte)
             packet.append(byte)
             if remaining_length == 0:
-                # FIXME - this doesn't deal with incorrectly large payloads
                 return packet
 
     def _pack_str16(self, packet: bytearray, data: bytearray | bytes | str) -> None:
@@ -3723,12 +3724,10 @@ class Client:
                     if m.qos == 0:
                         m.state = mqtt_ms_publish
                     elif m.qos == 1:
-                        # self._inflight_messages = self._inflight_messages + 1
                         if m.state == mqtt_ms_wait_for_puback:
                             m.dup = True
                         m.state = mqtt_ms_publish
                     elif m.qos == 2:
-                        # self._inflight_messages = self._inflight_messages + 1
                         if self._check_clean_session():
                             if m.state != mqtt_ms_publish:
                                 m.dup = True
@@ -4213,7 +4212,6 @@ class Client:
                 # prevents multiple callbacks for the same message.
                 message = self._in_messages.pop(mid)
                 self._handle_on_message(message)
-                self._inflight_messages -= 1
                 if self._max_inflight_messages > 0:
                     with self._out_message_mutex:
                         rc = self._update_inflight()
