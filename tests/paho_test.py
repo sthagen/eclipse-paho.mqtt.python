@@ -32,16 +32,16 @@ def create_server_socket():
     return (sock, port)
 
 
-def create_server_socket_ssl(*, verify_mode=None, alpn_protocols=None):
+def create_server_socket_ssl(*, path = ssl_path, verify_mode=None, alpn_protocols=None):
     assert ssl, "SSL not available"
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_verify_locations(str(ssl_path / "all-ca.crt"))
+    context.load_verify_locations(str(path / "all-ca.crt"))
     context.load_cert_chain(
-        str(ssl_path / "server.crt"),
-        str(ssl_path / "server.key"),
+        str(path / "server.crt"),
+        str(path / "server.key"),
     )
     if verify_mode:
         context.verify_mode = verify_mode
@@ -403,6 +403,13 @@ def pack_remaining_length(remaining_length):
             return s
 
 
+def signal_client_ready():
+    ready_file = os.environ.get("PAHO_TEST_READY_FILE")
+    if ready_file is not None:
+        with open(ready_file, "w"):
+            pass
+
+
 def loop_until_keyboard_interrupt(mqttc):
     """
     Call loop() in a loop until KeyboardInterrupt is received.
@@ -413,6 +420,7 @@ def loop_until_keyboard_interrupt(mqttc):
     and stop the client gracefully.
     """
     try:
+        signal_client_ready()
         while True:
             mqttc.loop()
     except KeyboardInterrupt:
@@ -431,6 +439,7 @@ def wait_for_keyboard_interrupt():
     """
     yield  # If we get a KeyboardInterrupt during the block, it's too soon!
     try:
+        signal_client_ready()
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
