@@ -9,6 +9,7 @@ from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
+import tests.mqtt5_props as mqtt5_props
 import tests.paho_test as paho_test
 
 # Import test fixture
@@ -255,6 +256,48 @@ class Test_connect_v5:
 
             packet_in = fake_broker.receive_packet(1)
             assert not packet_in  # Check connection is closed
+
+        finally:
+            mqttc.loop_stop()
+
+    def test_connack_server_keep_alive(self, fake_broker):
+        mqttc = client.Client(
+            CallbackAPIVersion.VERSION2, "connack-server-keep-alive",
+            protocol=MQTTProtocolVersion.MQTTv5, transport=fake_broker.transport)
+
+        # Client connects requesting the default keepalive of 60.
+        assert mqttc._keepalive == 60
+
+        is_connected = threading.Event()
+
+        def on_connect(mqttc, obj, flags, reason, properties):
+            assert reason == 0
+            is_connected.set()
+
+        mqttc.on_connect = on_connect
+
+        mqttc.connect_async("localhost", fake_broker.port)
+        mqttc.loop_start()
+
+        try:
+            fake_broker.start()
+
+            packet_in = fake_broker.receive_packet(1000)
+            assert packet_in  # Check connection was not closed
+
+            # Broker overrides the keepalive with a Server Keep Alive of 42
+            # (a value other than the default 60 so the override is unambiguous).
+            server_keep_alive = mqtt5_props.gen_uint16_prop(
+                mqtt5_props.PROP_SERVER_KEEP_ALIVE, 42)
+            connack_packet = paho_test.gen_connack(
+                rc=0, proto_ver=5, properties=server_keep_alive)
+            count = fake_broker.send_packet(connack_packet)
+            assert count == len(connack_packet)
+
+            is_connected.wait()
+
+            # Per MQTT 5.0 (3.2.2.3.14) the client must adopt the server value.
+            assert mqttc._keepalive == 42
 
         finally:
             mqttc.loop_stop()
