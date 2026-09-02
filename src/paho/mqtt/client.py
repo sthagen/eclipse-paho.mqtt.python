@@ -660,7 +660,8 @@ class Client:
     functions as described below.
 
     :param CallbackAPIVersion callback_api_version: define the API version for user-callback (on_connect, on_publish,...).
-        This field is required and it's recommended to use the latest version (CallbackAPIVersion.API_VERSION2).
+        This field defaults to CallbackAPIVersion.VERSION1 to avoid breaking user's code.  However it's recommended
+        to migrate to the latest version (CallbackAPIVersion.VERSION2).
         See each callback for description of API for each version. The file docs/migrations.rst contains details on
         how to migrate between version.
 
